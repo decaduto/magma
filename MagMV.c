@@ -91,6 +91,8 @@ MODULE_INFO(intree, "Y");
 /*
     After the discover of the 802.11 driver, the MAGMA_V_INITIALIZE_SOFTMAC() and the MAGMA_V_INITIALIZE_HARDMAC functions are used for setting up the
     specific struct which will be used to fill the cfg/ieee 80211_ops struct, note that, the various specific functions, are included from another header file.
+    NOTE that in both the 2 '80211_ops' struct, the function pointer for the monitor mode isn't present, this because the network adapter can switch in monitor
+    mode if and only if the user requests a new interface 'add_intf'.
 
 */
 
@@ -224,6 +226,10 @@ static struct ieee80211_rate available_rates[] = {
     {
             .bitrate = 150,
             .hw_value = 0x16,
+    },
+    {
+            .bitrate = 300,
+            .hw_value = 0x20,
     },
 };
 
@@ -419,7 +425,7 @@ enum MagMa_V_returncodes{
     HAS_SDIO_BROADCOM,  // WIP
     HAS_USB_BROADCOM,   // TO DO
     HAS_USB_QUALCOMM, // TO DO
-    HAS_PCI_QUALCOMM,
+    HAS_PCI_QUALCOMM, // TO DO
 }MagMa_V_returncodes;
 
 /* HCMD enums */
@@ -1141,6 +1147,9 @@ magma_wlan_dev_det->sdio_write32 = magma_broadcomm_sdio_write32;                
 magma_wlan_dev_det->sdio_read32 = magma_broadcomm_sdio_read32;                           \
 }
 
+#define MAGMA_SPAWN_QUALCOMM_PCI_RW() { \
+}
+
 /* entry point function */
 static int __init detect_available_wl0_intf(void){
 
@@ -1299,7 +1308,7 @@ static void __exit deallocate_wl0_intf(void){
             break;
             case HAS_USB_BROADCOM:
             break;
-            case HAS_PCI_QUALCOMM:
+            case HAS_PCI_QUALCOMM:  /* note that this is referred to the 'qtnfmac' driver */
             break;
         }
     }else{
