@@ -85,6 +85,130 @@
         BRCMF_C_SET_WSEC_PMK = 268,
         };
 
+enum magma_broadcom_bus_state {
+	BRCMF_BUS_DOWN,		/* Not ready for frame transfers */
+	BRCMF_BUS_UP		/* Ready for frame transfers */
+};
+	
+/* states of the SDIO bus, NOMEDIUM indicates that isn't present */
+enum magma_broadcom_sdiod_state {
+	BRCMF_SDIOD_DOWN = 0,
+	BRCMF_SDIOD_DATA, /* now BRCMF_SDIOD_DATA is equal to 1, will be usefull in future :) */
+	BRCMF_SDIOD_NOMEDIUM
+};
+
+
+enum magma_broadcom_bus_protocol_type {
+	BRCMF_PROTO_BCDC,
+	BRCMF_PROTO_MSGBUF
+};
+
+/* set of structures which represent the SDIO bus interface for communicating with the bcmXX 802.11 adapters */
+
+struct brcmf_bus {
+	union {
+		struct brcmf_sdio_dev *sdio;
+		struct brcmf_usbdev *usb;
+		struct brcmf_pciedev *pcie;
+	} bus_priv;
+	enum magma_broadcom_bus_protocol_type proto_type;
+	struct device *dev;
+	struct brcmf_pub *drvr;
+	enum magma_broadcom_bus_state state;
+	uint maxctl;
+	u32 chip;
+	u32 chiprev;
+};
+
+/* sdio device */
+struct brcmf_sdio_dev {
+	struct sdio_func *func1;
+	struct sdio_func *func2;
+	struct brcmf_core *cc_core;	/* chipcommon core info struct */
+	struct brcmf_sdio *bus;
+	struct device *dev;
+	struct brcmf_bus *bus_if;
+	struct brcmf_mp_device *settings;
+	#ifndef BRCMF_FW_NAME_LEN
+	        #define	BRCMF_FW_NAME_LEN       320
+	#endif
+	char fw_name[BRCMF_FW_NAME_LEN];
+	char nvram_name[BRCMF_FW_NAME_LEN];
+	enum magma_broadcom_sdiod_state state;
+};
+
+struct magma_broadcomm_sdio_bus{
+	union {
+		struct brcmf_sdio_dev *sdio;
+		struct brcmf_usbdev *usb;
+		struct brcmf_pciedev *pcie;
+	} bus_priv;
+	enum magma_broadcom_bus_protocol_type proto_type;
+	struct device *dev;
+	struct brcmf_pub *drvr;
+	enum magma_broadcom_bus_state state;
+	uint maxctl;
+	u32 chip;
+	u32 chiprev;
+}magma_broadcomm_sdio_bus;
+
+/* counters for the commands in the SDIO bus, used for the bcm43XX chips */
+struct brcmf_sdio_count {
+	ulong tx_ctlerrs;	/* Err of sending ctrl frames */
+	ulong tx_ctlpkts;	/* Ctrl frames sent to dongle */
+	ulong rx_ctlerrs;	/* Err of processing rx ctrl frames */
+	ulong rx_ctlpkts;	/* Ctrl frames processed from dongle */
+	ulong rx_readahead_cnt;	/* packets where header read-ahead was used */
+};
+
+struct brcmf_sdio {
+	struct brcmf_sdio_dev *sdiodev;	/* sdio device handler */
+	struct brcmf_chip *ci;	/* Chip info struct */
+	struct brcmf_core *sdio_core; /* sdio core info struct */
+
+
+	struct sk_buff *glomd;	/* Packet containing glomming descriptor */
+	struct sk_buff_head glom; /* Packet list for glommed superframe */
+
+	u8 *rxbuf;		/* Buffer for receiving control packets */
+	uint rxblen;		/* Allocated length of rxbuf */
+	u8 *rxctl;		/* Aligned pointer into rxbuf */
+	u8 *rxctl_orig;		/* pointer for freeing rxctl */
+	uint rxlen;		/* Length of valid data in buffer */
+	spinlock_t rxctl_lock;	/* protection lock for ctrl frame resources */
+
+	u8 sdpcm_ver;	/* Bus protocol reported by dongle */
+
+	bool intr;		/* Use interrupts */
+	bool poll;		/* Use polling */
+	atomic_t ipend;		/* Device interrupt is pending */
+
+#ifdef DEBUG
+	uint console_interval;
+	struct brcmf_console console;	/* Console output polling support */
+	uint console_addr;	/* Console address from shared struct */
+#endif
+
+	uint clkstate;		/* State of sd and backplane clock(s) */
+	s32 idletime;		/* Control for activity timeout */
+	s32 idlecount;		/* Activity timeout counter */
+	s32 idleclock;		/* How to set bus driver when idle */
+	bool rxflow_mode;	/* Rx flow control mode */
+	bool rxflow;		/* Is rx flow control on */
+	bool alp_only;		/* Don't use HT clock (ALP only) */
+
+	u8 *ctrl_frame_buf;
+	u16 ctrl_frame_len;
+	bool ctrl_frame_stat;
+	int ctrl_frame_err;
+	struct task_struct *watchdog_tsk;
+	struct workqueue_struct *brcmf_wq;
+	struct work_struct datawork;
+	bool dpc_triggered;
+
+	struct brcmf_sdio_count sdcnt;
+};
+
     static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev);
     static int magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write);
     static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset);
@@ -250,10 +374,8 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         #ifndef __GENERIC_IO_H
             #include <asm-generic/iomap.h>
         #endif
-        if( iowrite32(value_to_write, (offset + magma_broadcom_pci_mmio)) ){
-            return WRITE_SUCCESS;
-        }else{
-            return WRITE_ERROR;
+        iowrite32(value_to_write, (offset + magma_broadcom_pci_mmio));
+        return 0;
         }
 
     static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset){
@@ -264,7 +386,6 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         #ifndef __GENERIC_IO_H
             #include <asm-generic/iomap.h>
         #endif
-        return ioread32(mmio + offset);
+        return ioread32(magma_broadcom_pci_mmio + offset);
         }
-}
 #endif
