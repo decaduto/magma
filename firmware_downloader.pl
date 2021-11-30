@@ -8,7 +8,18 @@ sub BEGIN{
     use warnings;
     no strict 'subs';
     use WWW::Mechanize;
+    use LWP::UserAgent; # used for setting the custom UserAgent
+    use LWP::Simple qw( getstore );
+    my $magma_mecha = WWW::Mechanize->new(cookie_jar = undef); # do not mantain the web cookies
+    my $iwlwifi_repo = "https://www.intel.com/content/www/us/en/support/articles/000005511/wireless.html";
 
+    # call the Magma Kernel daemon and ask for the specific wlan fw
+    $magma_mecha->get($magma_wlan_specific_repo);
+    foreach( $magma_mecha->find_all_links() ){
+        if( $_->url =~ ".tgz" ){
 
+        }
+
+    }
 
 }  
