@@ -243,7 +243,7 @@ static void magma_iwlwifi_pcie_write_bytes(void *hw_base, enum magma_iwlwifi_rea
             writeb(value, ( hw_base + offset ) ); /* writeb stands for write Byte */
             break;
         case MAGMA_IWLWIFI_WRITE_LONG:
-            writel(valuem, ( hw_base + offset ) ); /* writel stands for write Long */
+            writel(value, ( hw_base + offset ) ); /* writel stands for write Long */
             break;
     }
 }
