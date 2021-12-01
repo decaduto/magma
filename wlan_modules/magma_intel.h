@@ -1,6 +1,10 @@
 #ifndef __MAGMA_INTEL_H
     #define __MAGMA_INTEL_H
 
+enum magma_iwlwifi_read_len{
+    MAGMA_IWLWIFI_WRITE_BYTE = 8,
+    MAGMA_IWLWIFI_WRITE_LONG = 32,
+};
 
 /* the pci_device_id struct contains all PCI devices Vendor / Product IDs, will be used during the probe function invocation in a for loop for determining if the host has attached a PCI device which is conform */
 static struct pci_device_id magm_supported_pci[] = {
@@ -221,5 +225,27 @@ enum magma_iwlwifi_hcmd {
 	WOWLAN_GET_STATUSES = 0xe5,
 	SCAN_OFFLOAD_PROFILES_QUERY_CMD = 0x56,
 };
+
+static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void *hw_base){
+    /* control if the pci_dev struct is safe to use as argoument for other functions */
+    void __iomem *page_tables = pcim_iomap_table(magma_iwlwifi_pci);
+    if( page_tables == NULL ){
+        return -1; //TODO
+    }
+    hw_base = page_tables[0];
+    return 0;
+}
+
+/* magma_iwlwifi_pcie_write_bytes: write 8 bits or 32 bits at the specified offset in the WLAN card */
+static void magma_iwlwifi_pcie_write_bytes(void *hw_base, enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value){
+    switch(magma_iwlwifi_readlength){
+        case MAGMA_IWLWIFI_WRITE_BYTE:
+            writeb(value, ( hw_base + offset ) ); /* writeb stands for write Byte */
+            break;
+        case MAGMA_IWLWIFI_WRITE_LONG:
+            writel(valuem, ( hw_base + offset ) ); /* writel stands for write Long */
+            break;
+    }
+}
 
 #endif
