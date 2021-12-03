@@ -123,7 +123,7 @@ struct ieee80211_ops magma_V_softmac = {                        \
         .stop_ap = magma_softmac_stop_ap_mode,                  \
         .hw_scan = magma_softmac_scan,                          \
     };                                                          \
-    magma_ieee80211_ops = &magma_V_softmac;                     \
+    magma_main_drv->magma_ieee80211_ops = &magma_V_softmac;                     \
 }
 
 /* the MAGMA_V_INITIALIZE_HARDMAC is used when the device supports effectively hardMAC, this permits to initialize the cfg80211_ops struct */
@@ -140,7 +140,7 @@ struct cfg80211_ops magma_V_hardmac = {                 \
         .stop_ap = magma_stop_ap_mode,                  \
         .scan = magma_scan,                             \
     };                                                  \
-    magma_cfg80211_ops = &magma_V_hardmac;              \
+    magma_main_drv->magma_cfg80211_ops = &magma_V_hardmac;              \
 }
 
 /*
@@ -208,7 +208,6 @@ static struct ieee80211_channel supported_channels[] = {
 	}
 };
 
-// TODO: study this
 static struct ieee80211_rate available_rates[] = {
 	{
 	    	.bitrate = 10,
@@ -244,8 +243,8 @@ const struct cfg80211_acl_data acldata = {
 
 /* define supported bands */
 static struct ieee80211_supported_band available_bands = {
-	.ht_cap.cap = IEEE80211_HT_CAP_SGI_20,
-	.ht_cap.ht_supported = false,
+	.ht_cap.cap = IEEE80211_HT_CAP_SGI_40,
+	.ht_cap.ht_supported = true,
 
 	.channels = supported_channels,
 	.n_channels = ARRAY_SIZE(supported_channels),
@@ -301,12 +300,12 @@ enum MagMa_V_errorcodes{
 }MagMa_V_errorcodes;
 
 enum MagMa_V_returncodes{
-    HAS_PCI_INTEL = 3, // WIP
-    HAS_PCI_BROADCOM,   // WIP
-    HAS_SDIO_BROADCOM,  // WIP
-    HAS_USB_BROADCOM,   // TO DO
-    HAS_USB_QUALCOMM, // TO DO
-    HAS_PCI_QUALCOMM, // TO DO
+    HAS_PCI_INTEL = 3,
+    HAS_PCI_BROADCOM,
+    HAS_SDIO_BROADCOM,
+    HAS_USB_BROADCOM,
+    HAS_USB_QUALCOMM,
+    HAS_PCI_QUALCOMM,
 }MagMa_V_returncodes;
 
 /* magma_wlan_fw_type: enum which contains all constants related to the iwlwifi / bcm Wifi blobs */
@@ -334,20 +333,40 @@ struct magma_wlan_device_detail{
 };
 
 /* before prototyping any function, I've decided to insert the ieee80211_hw, class and device structures here */
-static struct ieee80211_hw *magma_V_hardware;
-static struct wiphy *magma_wireless_physical_layer;
-static struct class *magma_class = NULL;
-static struct device *magma_device = NULL;
-static struct ieee80211_ops *magma_ieee80211_ops = NULL;
-static struct cfg80211_ops *magma_cfg80211_ops = NULL;
-static struct file_operations *magma_V_fops[3];
+struct magma_main_driver_container{
+    struct ieee80211_hw *magma_V_hardware;
+    struct wiphy *magma_wireless_physical_layer;
+    struct class *magma_class;
+    struct device *magma_device;
+    struct ieee80211_ops *magma_ieee80211_ops;
+    struct cfg80211_ops *magma_cfg80211_ops;
+    struct file_operations *magma_V_fops[3];
+    struct magma_wlan_device_detail *magma_wlan_dev_det;
+};
 
-static struct magma_wlan_device_detail *magma_wlan_dev_det = NULL;
+static struct magma_main_driver_container *magma_main_drv = NULL;
 
-/* functions prototypes, both PCI, SDIO and USB functions are declared */
+/* function prototypes */
+static void magma_initialize_driver_container(struct magma_main_driver_container *magma_drv);
 static struct magma_wlan_device_detail *magma_pci_probe(struct pci_dev *pci_dev, struct pci_device_id *pci_table_entity);
 static int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
 static int softmac_detection(struct magma_wlan_device_detail *magma_dev);
+
+/* set to NULL every struct pointer elements inside the 'magma_main_driver_container' struct */
+static void magma_initialize_driver_container(struct magma_main_driver_container *magma_drv){
+    /* if the struct is NULLm reallocate it */
+    if( sizeof(magma_drv) == 0 ){
+        magma_drv = (struct magma_main_driver_container *)kmalloc(sizeof(struct magma_main_driver_container), GFP_KERNEL);
+    }
+    magma_drv->magma_V_hardware = NULL;
+    magma_drv->magma_wireless_physical_layer = NULL;
+    magma_drv->magma_class = NULL;
+    magma_drv->magma_device = NULL;
+    magma_drv->magma_ieee80211_ops = NULL;
+    magma_drv->magma_cfg80211_ops = NULL;
+    magma_drv->magma_wlan_dev_det = NULL;    
+    memset(magma_main_drv->magma_V_fops, 0x0, ( sizeof(struct file_operations) * 3 ) );
+}
 
 /* still to be completed */
 static int magma_initialize_wlan_pci(struct pci_dev *pci_wlan, enum MagMa_V_returncodes magma_switchcodes){
@@ -481,7 +500,7 @@ static int magma_sdio_probe(void){
 #endif
 
 static int softmac_detection(struct magma_wlan_device_detail *magma_dev){
-    if( magma_wlan_dev_det->is_softmac ){
+    if( magma_main_drv->magma_wlan_dev_det->is_softmac ){
         return HAVE_SOFTMAC;
     }else{
         return NO_SOFTMAC;
@@ -622,10 +641,15 @@ static int __init detect_available_wl0_intf(void){
     void *privateBufferSizePool = kmalloc(GFP_KERNEL, MAX_BUFFERSIZE_PVT);
     struct ieee80211_txrx_stypes *magma_V_management_bits = (struct ieee80211_txrx_stypes*)kmalloc( ( sizeof(antenna_rx) + sizeof(antenna_tx) ), GFP_KERNEL);
 
+
+    /* start cleaning the struct */
+    magma_initialize_driver_container(magma_main_drv);
+
     /* initialize the buffer space, this will be used as the module built in buffer for the internal console */
     memset(magm_main_V.private_buffer, 0x0, MAGM_MAX_BUFFER_SIZE);
     for(; i <= 2; i++){
-        magma_V_fops[i]->owner = THIS_MODULE;
+        magma_main_drv->magma_V_fops[i]->owner = THIS_MODULE;
+        magma_main_drv->magma_V_fops[i]->unlocked_ioctl = ;
     }
 
     for(i = 0; i <= 1; i++){
@@ -640,7 +664,7 @@ static int __init detect_available_wl0_intf(void){
     if( alloc_chrdev_region(&magma_device_t, 0, 2, "MagMa-WiFi") ){
         return ERROR_CHRDEV_ALLOC;
     }
-    magma_class = class_create(THIS_MODULE, "MagMa-WiFi");
+    magma_main_drv->magma_class = class_create(THIS_MODULE, "MagMa-WiFi");
     // TODO: init the device
 
 
@@ -649,71 +673,71 @@ static int __init detect_available_wl0_intf(void){
 
 
     /* if softmac_detection() function returns that the current device is a SOFTmac one, use mac80211 structures and functions, use basic wiphy otherwise */
-    if( softmac_detection(magma_wlan_dev_det) ){
+    if( softmac_detection(magma_main_drv->magma_wlan_dev_det) ){
         /* allocate safely the ieee80211_hw struct, defined before only as a simple pointer */
         MAGMA_V_INITIALIZE_SOFTMAC();
-        magma_V_hardware = ieee80211_alloc_hw(sizeof(struct ieee80211_ops), magma_ieee80211_ops);
-        if( sizeof(magma_V_hardware) == 0 ){
+        magma_main_drv->magma_V_hardware = ieee80211_alloc_hw(sizeof(struct ieee80211_ops), magma_main_drv->magma_ieee80211_ops);
+        if( sizeof(magma_main_drv->magma_V_hardware) == 0 ){
             // TODO
-            kfree(magma_V_hardware);
+            kfree(magma_main_drv->magma_V_hardware);
             return ERROR_NOIEEE80211;
         }
         /* start the filling of the wiphy struct, insert the MAC_ADDRESS, insert various data and structures defined above */
-        strncpy(magma_V_hardware->wiphy->perm_addr, permanent_address, MAC_ADDRESS_LEN);
-        magma_V_hardware->wiphy->interface_modes = ( BIT(NL80211_IFTYPE_AP) | BIT(NL80211_IFTYPE_MONITOR) | BIT(NL80211_IFTYPE_UNSPECIFIED) );
-        magma_V_hardware->wiphy->flags = (WIPHY_FLAG_4ADDR_AP | WIPHY_FLAG_AP_UAPSD | WIPHY_FLAG_HAVE_AP_SME | WIPHY_FLAG_HAS_CHANNEL_SWITCH | WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD);
-        magma_V_hardware->wiphy->bands[NL80211_BAND_2GHZ] = &available_bands;
+        strncpy(magma_main_drv->magma_V_hardware->wiphy->perm_addr, permanent_address, MAC_ADDRESS_LEN);
+        magma_main_drv->magma_V_hardware->wiphy->interface_modes = ( BIT(NL80211_IFTYPE_AP) | BIT(NL80211_IFTYPE_MONITOR) | BIT(NL80211_IFTYPE_UNSPECIFIED) );
+        magma_main_drv->magma_V_hardware->wiphy->flags = (WIPHY_FLAG_4ADDR_AP | WIPHY_FLAG_AP_UAPSD | WIPHY_FLAG_HAVE_AP_SME | WIPHY_FLAG_HAS_CHANNEL_SWITCH | WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD);
+        magma_main_drv->magma_V_hardware->wiphy->bands[NL80211_BAND_2GHZ] = &available_bands;
         /* set the maximun size of Information Elements to 2285 bytes */
-        magma_V_hardware->wiphy->max_scan_ie_len = 2285;
+        magma_main_drv->magma_V_hardware->wiphy->max_scan_ie_len = 2285;
         #ifndef IEEE80211_MAX_SCAN 
                 #define IEEE80211_MAX_SCAN 128
-                magma_V_hardware->wiphy->max_scan_ssids = IEEE80211_MAX_SCAN;
+                magma_main_drv->magma_V_hardware->wiphy->max_scan_ssids = IEEE80211_MAX_SCAN;
         #endif
         #ifndef IEEE80211_MAX_REQUEST_SCAN
                 #define IEEE80211_MAX_REQUEST_SCAN 128
-                magma_V_hardware->wiphy->max_scan_ssids = IEEE80211_MAX_REQUEST_SCAN;
+                magma_main_drv->magma_V_hardware->wiphy->max_scan_ssids = IEEE80211_MAX_REQUEST_SCAN;
         #endif 
 
-        magma_V_hardware->wiphy->cipher_suites = magm_V_supported_cipher_suite;
+        magma_main_drv->magma_V_hardware->wiphy->cipher_suites = magm_V_supported_cipher_suite;
         /* NOTE that ARRAY_SIZE is like a sizeof(), fill the n_XXX_XXX only for completeness */
-        magma_V_hardware->wiphy->n_cipher_suites = ARRAY_SIZE(magm_V_supported_cipher_suite);
-        magma_V_hardware->wiphy->iface_combinations = &interfacecombination;
+        magma_main_drv->magma_V_hardware->wiphy->n_cipher_suites = ARRAY_SIZE(magm_V_supported_cipher_suite);
+        magma_main_drv->magma_V_hardware->wiphy->iface_combinations = &interfacecombination;
         /* n_iface_combinations is the result of 10 + 1 +1 */
-        magma_V_hardware->wiphy->n_iface_combinations = 12;
-        strncpy(magma_V_hardware->wiphy->fw_version, MODULE_FW_V, sizeof(magma_V_hardware->wiphy->fw_version));
-        magma_V_hardware->wiphy->hw_version = 0x3f8ccccd;
-        magma_V_hardware->wiphy->max_ap_assoc_sta = 0;
-        magma_V_hardware->wiphy->max_num_csa_counters = 0;
+        magma_main_drv->magma_V_hardware->wiphy->n_iface_combinations = 12;
+        strncpy(magma_main_drv->magma_V_hardware->wiphy->fw_version, MODULE_FW_V, sizeof(magma_main_drv->magma_V_hardware->wiphy->fw_version));
+        magma_main_drv->magma_V_hardware->wiphy->hw_version = 0x3f8ccccd;
+        magma_main_drv->magma_V_hardware->wiphy->max_ap_assoc_sta = 0;
+        magma_main_drv->magma_V_hardware->wiphy->max_num_csa_counters = 0;
         /* insert various wiphy flags, for having idea of what I've inserted, please consult https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/nl80211.h#L5790 */
-        magma_V_hardware->wiphy->features = (NL80211_FEATURE_INACTIVITY_TIMER | NL80211_FEATURE_CELL_BASE_REG_HINTS | NL80211_FEATURE_LOW_PRIORITY_SCAN | NL80211_FEATURE_AP_SCAN | NL80211_FEATURE_SCAN_FLUSH | NL80211_FEATURE_FULL_AP_CLIENT_STATE |
+        magma_main_drv->magma_V_hardware->wiphy->features = (NL80211_FEATURE_INACTIVITY_TIMER | NL80211_FEATURE_CELL_BASE_REG_HINTS | NL80211_FEATURE_LOW_PRIORITY_SCAN | NL80211_FEATURE_AP_SCAN | NL80211_FEATURE_SCAN_FLUSH | NL80211_FEATURE_FULL_AP_CLIENT_STATE |
         NL80211_FEATURE_ACTIVE_MONITOR | NL80211_FEATURE_AP_MODE_CHAN_WIDTH_CHANGE | NL80211_FEATURE_WFA_TPC_IE_IN_PROBES | NL80211_FEATURE_TX_POWER_INSERTION | NL80211_FEATURE_ND_RANDOM_MAC_ADDR | NL80211_FEATURE_MAC_ON_CREATE);
         magma_V_management_bits->rx = antenna_rx;
         magma_V_management_bits->tx = antenna_tx;
-        magma_V_hardware->wiphy->mgmt_stypes = magma_V_management_bits;
+        magma_main_drv->magma_V_hardware->wiphy->mgmt_stypes = magma_V_management_bits;
         /* use custom regulatory codes */
         if( true ){
-            magma_V_hardware->wiphy->regulatory_flags = REGULATORY_CUSTOM_REG;
+            magma_main_drv->magma_V_hardware->wiphy->regulatory_flags = REGULATORY_CUSTOM_REG;
         }
-        magma_V_hardware->wiphy->max_remain_on_channel_duration = 1;
+        magma_main_drv->magma_V_hardware->wiphy->max_remain_on_channel_duration = 1;
         /* signal strength, increasing from 0 through 100 */
-        magma_V_hardware->wiphy->signal_type = CFG80211_SIGNAL_TYPE_UNSPEC;
-        magma_V_hardware->wiphy->registered = true;
+        magma_main_drv->magma_V_hardware->wiphy->signal_type = CFG80211_SIGNAL_TYPE_UNSPEC;
+        magma_main_drv->magma_V_hardware->wiphy->registered = true;
         /* assign the Memory Pool allocated before */
-        magma_V_hardware->priv = privateBufferSizePool;
-        magma_V_hardware->conf = card_configuration;
+        magma_main_drv->magma_V_hardware->priv = privateBufferSizePool;
+        magma_main_drv->magma_V_hardware->conf = card_configuration;
         /* as the cfg80211 documentation explains, when rate_control_algorithm is set to NULL, means that 'minstrel' algo. will be used */
-        magma_V_hardware->rate_control_algorithm = NULL;
-        magma_V_hardware->flags[5] = BIT(IEEE80211_HW_HAS_RATE_CONTROL) | BIT(IEEE80211_HW_SIGNAL_DBM) | BIT(IEEE80211_HW_MFP_CAPABLE) | BIT(IEEE80211_HW_WANT_MONITOR_VIF) | BIT(IEEE80211_HW_SW_CRYPTO_CONTROL) | BIT(IEEE80211_HW_SUPPORTS_DYNAMIC_PS);
-        magma_V_hardware->max_signal = 100;
+        magma_main_drv->magma_V_hardware->rate_control_algorithm = NULL;
+        magma_main_drv->magma_V_hardware->flags[5] = BIT(IEEE80211_HW_HAS_RATE_CONTROL) | BIT(IEEE80211_HW_SIGNAL_DBM) | BIT(IEEE80211_HW_MFP_CAPABLE) | BIT(IEEE80211_HW_WANT_MONITOR_VIF) | BIT(IEEE80211_HW_SW_CRYPTO_CONTROL) | BIT(IEEE80211_HW_SUPPORTS_DYNAMIC_PS);
+        magma_main_drv->magma_V_hardware->max_signal = 100;
         /* register the ieee80211_hw struct, if fails, free everything and return an error code */
-        if( ieee80211_register_hw(magma_V_hardware) < 0 ){
+        if( ieee80211_register_hw(magma_main_drv->magma_V_hardware) < 0 ){
                 /* NOTE: must write function which analyze the specific struct bytes and says if is possible to free it or not */
                 kfree(magma_V_management_bits);
-                kfree(magma_V_hardware);
+                kfree(magma_main_drv->magma_V_hardware);
                 return ERROR_NOIEEE80211;
         }
     /* accoppiate the ieee80211_hw struct with the device struct */
-    SET_IEEE80211_DEV(magma_V_hardware, magma_device);
+    SET_IEEE80211_DEV(magma_main_drv->magma_V_hardware, magma_main_drv->magma_device);
     /* if the card is not SOFTMAC based, must be HARDMAC based, so we will use only the cfg80211 layer, now we must play with wiphy struct, instead of the ieee80211_hw */
     }else{
         /* allocate the cfg80211_ops safely */
@@ -731,7 +755,7 @@ static int __init detect_available_wl0_intf(void){
                 .dfs_region = NL80211_DFS_UNSET,                    \
                 .n_reg_rules = ARRAY_SIZE(magma_temp_reg_rules),    \
             };                                                      \
-            wiphy_apply_custom_regulatory(magma_wireless_physical_layer, &magma_temp_regdomain);    \
+            wiphy_apply_custom_regulatory(magma_main_drv->magma_wireless_physical_layer, &magma_temp_regdomain);    \
             }
             APPLY_CUSTOM_REGULATORY();
             }
@@ -741,10 +765,10 @@ static int __init detect_available_wl0_intf(void){
 
 
 static void __exit deallocate_wl0_intf(void){
-    if( softmac_detection(magma_wlan_dev_det) ){
-        ieee80211_unregister_hw(magma_V_hardware);
-        ieee80211_free_hw(magma_V_hardware);
-        switch( magma_wlan_dev_det->magma_retcodes ){
+    if( softmac_detection(magma_main_drv->magma_wlan_dev_det) ){
+        ieee80211_unregister_hw(magma_main_drv->magma_V_hardware);
+        ieee80211_free_hw(magma_main_drv->magma_V_hardware);
+        switch( magma_main_drv->magma_wlan_dev_det->magma_retcodes ){
             case HAS_PCI_INTEL:
             //magma_pci_remove();
             break;
@@ -761,8 +785,8 @@ static void __exit deallocate_wl0_intf(void){
             break;
         }
     }else{
-        wiphy_unregister(magma_wireless_physical_layer);
-        wiphy_free(magma_wireless_physical_layer);
+        wiphy_unregister(magma_main_drv->magma_wireless_physical_layer);
+        wiphy_free(magma_main_drv->magma_wireless_physical_layer);
     }
 }
 
