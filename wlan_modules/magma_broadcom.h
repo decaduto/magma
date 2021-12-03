@@ -12,6 +12,20 @@
         WRITE_ERROR,    
     };
 
+    enum magma_broadcom_available_io_ops{
+        MAGMA_BROADCOM_DO_READ8 = 8,
+        MAGMA_BROADCOM_DO_READ32 = 32,
+        MAGMA_BROADCOM_DO_WRITE8 = 64,
+        MAGMA_BROADCOM_DO_WRITE32 = 128,
+        MAGMA_BROADCOM_DO_RAM_WRITE32 = 110,
+    }magma_broadcom_available_io_ops;
+    
+    struct magma_io_res{
+        u8 read8_res;
+        u32 read32_res;
+        short int write_res;
+    };
+
     enum magma_broadcom_available_ioctl{
         MAGMA_BROADCOM_EXECUTE_PCI_READ32 = 1110,
         MAGMA_BROADCOM_EXECUTE_PCI_WRITE32,
@@ -20,7 +34,7 @@
         MAGMA_BROADCOM_SCAN,
         MAGMA_BROADCOM_START_AP,
         MAGMA_BROADCOM_TX,
-    };
+    }magma_broadcom_available_ioctl;
 
     /* this enum represent all commands supported by the brcmfmac driver */
 
@@ -215,6 +229,8 @@
     };
 
     static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev);
+    static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write);
+    static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset);
     static int magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write);
     static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset);
     static int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
@@ -370,6 +386,20 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
         return 0;
     }
+
+    /* magma_broadcom_pci_write8 */
+    static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write){
+        #ifndef BCMA_CORE_SIZE
+              #define BCMA_CORE_SIZE 0x1000
+        #endif
+        offset += (2 * BCMA_CORE_SIZE);
+        #ifndef __GENERIC_IO_H
+            #include <asm-generic/iomap.h>
+        #endif
+        return iowrite8(value_to_write, (offset + magma_broadcom_pci_mmio));
+
+    }
+
     /* magma_broadcom_pci_write32*/ 
     static int magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write){
         #ifndef BCMA_CORE_SIZE
@@ -382,6 +412,17 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         iowrite32(value_to_write, (offset + magma_broadcom_pci_mmio));
         return 0;
         }
+
+    static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset){
+       #ifndef BCMA_CORE_SIZE
+              #define BCMA_CORE_SIZE 0x1000
+        #endif
+        offset += (2 * BCMA_CORE_SIZE);
+        #ifndef __GENERIC_IO_H
+            #include <asm-generic/iomap.h>
+        #endif
+	    return ioread8(magma_broadcom_pci_mmio + offset);
+    }
 
     static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset){
         #ifndef BCMA_CORE_SIZE
@@ -422,6 +463,53 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 	    magma_broadcom_pci_write32(magma_broadcom_pci_mmio, B43_MMIO_RAM_DATA, val);
     }
 
+    #ifndef _LINUX_TYPES_H
+        #include <linux/types.h>
+    #endif
+    /* https://elixir.bootlin.com/linux/latest/source/include/linux/types.h#L158 */
+    static struct magma_io_res *magma_broadcom_main_io(resource_size_t bus_addr, enum magma_broadcom_available_io_ops ops_code, u16 offset, u32 value_to_write){
+        struct magma_io_res *magma_io_struct = (struct magma_io_res *)kmalloc(sizeof(magma_io_struct), GFP_USER);        
+        void __iomem *memory_area;
+        magma_io_struct->read8_res = 0;
+        magma_io_struct->read32_res = 0;
+        #ifndef BCMA_CORE_SIZE
+            #define BCMA_CORE_SIZE 0x1000
+        #endif
+        memory_area = ioremap(bus_addr, BCMA_CORE_SIZE);
+        switch(magma_broadcom_available_io_ops){
+            case MAGMA_BROADCOM_DO_READ8:
+                if( !!( magma_io_struct->read8_res = magma_broadcom_pci_read8(memory_area, offset) ) ){
+                    return magma_io_struct;
+                }else{
+                    magma_io_struct->read8_res = 0;
+                    return magma_io_struct;
+                }
+            case MAGMA_BROADCOM_DO_READ32:
+                if( !!( magma_io_struct->read32_res = magma_broadcom_pci_read32(memory_area, offset) ) ){
+                    return magma_io_struct;
+                }else{
+                    magma_io_struct->read32_res = 0;
+                    return magma_io_struct;
+                }
+            case MAGMA_BROADCOM_DO_WRITE8:
+                magma_broadcom_pci_write8(memory_area, offset, value_to_write);
+                magma_io_struct->write_res = 1;
+                return magma_io_struct;
+            case MAGMA_BROADCOM_DO_WRITE32:
+                magma_broadcom_pci_write32(memory_area, offset, value_to_write);
+                magma_io_struct->write_res = 1;
+                return magma_io_struct;
+            case MAGMA_BROADCOM_DO_RAM_WRITE32:
+                magma_broadcom_ram_write32(memory_area, offset, value_to_write);
+                magma_io_struct->write_res = 1;
+                return magma_io_struct;
+            default:
+                return magma_io_struct;
+        }
+    }
+
+EXPORT_SYMBOL(magma_broadcom_main_io);
+
     static long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
         switch(cmd){
 
@@ -433,5 +521,4 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
             return SUPPORTED_IOCTL_NOT_FOUND;
         }
     }
-
 #endif
