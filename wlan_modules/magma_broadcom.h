@@ -394,6 +394,33 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         return ioread32(magma_broadcom_pci_mmio + offset);
         }
 
+    /* write 32 bits directly into the wlan chip RAM, this function
+        has been taken from here https://elixir.bootlin.com/linux/v4.14/source/drivers/net/wireless/broadcom/b43/main.c#L477 */
+    static void magma_broadcom_ram_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 val){
+        u32 mac_ctrl;
+        #ifndef B43_MMIO_MACCTL
+            #define B43_MMIO_MACCTL			0x120
+        #endif
+        mac_ctrl = magma_broadcom_pci_read32(magma_broadcom_pci_mmio, B43_MMIO_MACCTL);
+        if (mac_ctrl & 0x00010000){ /* where '0x00010000' is referred to the Big Endian mode */
+            #ifndef _LINUX_SWAB_H
+                #include <linux/swab.h>
+            #endif
+		    val = swab32(val);
+        }
+        #ifndef B43_MMIO_RAM_CONTROL
+            #define B43_MMIO_RAM_CONTROL		0x130
+        #endif
+	    magma_broadcom_pci_write32(magma_broadcom_pci_mmio, B43_MMIO_RAM_CONTROL, offset);
+        #ifndef __ASM_GENERIC_MMIOWB_H
+            #include <asm-generic/mmiowb.h>
+        #endif    	    
+        mmiowb();
+        #ifndef B43_MMIO_RAM_DATA
+            #define B43_MMIO_RAM_DATA		0x134
+        #endif
+	    magma_broadcom_pci_write32(magma_broadcom_pci_mmio, B43_MMIO_RAM_DATA, val);
+    }
 
     static long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
         switch(cmd){
@@ -405,8 +432,6 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
             #endif
             return SUPPORTED_IOCTL_NOT_FOUND;
         }
-
-
     }
 
 #endif
