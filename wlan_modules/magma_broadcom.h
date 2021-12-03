@@ -5,6 +5,7 @@
         #include <linux/bcm47xx_nvram.h>
     #endif
 
+    /* status of operations, problably will be unused */
     enum magma_broadcom_state{
         LOAD_SUCCESS,
         LOAD_ERROR,
@@ -12,6 +13,7 @@
         WRITE_ERROR,    
     };
 
+    /* list of availables I/O operations for the IOCTLs */ 
     enum magma_broadcom_available_io_ops{
         MAGMA_BROADCOM_DO_READ8 = 8,
         MAGMA_BROADCOM_DO_READ32 = 32,
@@ -20,12 +22,14 @@
         MAGMA_BROADCOM_DO_RAM_WRITE32 = 110,
     }magma_broadcom_available_io_ops;
     
+    /* results of the I/O operations, I've decided to create a specific struct which contains all the different return types for the Output Operations */
     struct magma_io_res{
         u8 read8_res;
         u32 read32_res;
         short int write_res;
     };
 
+    /* list of the availables IOCTL offered by this module, note that is reduced cause most of the ieee80211_ops functions are useless for our purposes */
     enum magma_broadcom_available_ioctl{
         MAGMA_BROADCOM_EXECUTE_PCI_READ32 = 1110,
         MAGMA_BROADCOM_EXECUTE_PCI_WRITE32,
@@ -37,7 +41,6 @@
     }magma_broadcom_available_ioctl;
 
     /* this enum represent all commands supported by the brcmfmac driver */
-
     enum magma_broadcom_hcmd{
         BRCMF_C_GET_VERSION = 1,
         BRCMF_C_UP = 2,
@@ -137,22 +140,15 @@
     	} bus_priv;
     	enum magma_broadcom_bus_protocol_type proto_type;
     	struct device *dev;
-    	struct brcmf_pub *drvr;
     	enum magma_broadcom_bus_state state;
-    	uint maxctl;
-    	u32 chip;
-    	u32 chiprev;
     };
     
     /* sdio device */
     struct brcmf_sdio_dev {
        	struct sdio_func *func1;
-    	struct sdio_func *func2;
-    	struct brcmf_core *cc_core;	/* chipcommon core info struct */
     	struct brcmf_sdio *bus;
     	struct device *dev;
     	struct brcmf_bus *bus_if;
-    	struct brcmf_mp_device *settings;
     #ifndef BRCMF_FW_NAME_LEN
 	        #define	BRCMF_FW_NAME_LEN       320
 	#endif
@@ -169,11 +165,7 @@
 	    } bus_priv;
 	    enum magma_broadcom_bus_protocol_type proto_type;
 	    struct device *dev;
-	    struct brcmf_pub *drvr;
 	    enum magma_broadcom_bus_state state;
-	    uint maxctl;
-	    u32 chip;
-	    u32 chiprev;
     }magma_broadcomm_sdio_bus;
 
     /* counters for the commands in the SDIO bus, used for the bcm43XX chips */
@@ -186,48 +178,24 @@
     };
     
     struct brcmf_sdio {
-	    struct brcmf_sdio_dev *sdiodev;	/* sdio device handler */
-	    struct brcmf_chip *ci;	/* Chip info struct */
-	    struct brcmf_core *sdio_core; /* sdio core info struct */
-
-	    struct sk_buff *glomd;	/* Packet containing glomming descriptor */
-	    struct sk_buff_head glom; /* Packet list for glommed superframe */
-
-	    u8 *rxbuf;		/* Buffer for receiving control packets */
-	    uint rxblen;		/* Allocated length of rxbuf */
-	    u8 *rxctl;		/* Aligned pointer into rxbuf */
-	    u8 *rxctl_orig;		/* pointer for freeing rxctl */
-	    uint rxlen;		/* Length of valid data in buffer */
-	    spinlock_t rxctl_lock;	/* protection lock for ctrl frame resources */
-
-	    u8 sdpcm_ver;	/* Bus protocol reported by dongle */
-
+        struct brcmf_sdio_dev *sdiodev;
 	    bool intr;		/* Use interrupts */
 	    bool poll;		/* Use polling */
 	    atomic_t ipend;		/* Device interrupt is pending */
 #ifdef DEBUG
-	    uint console_interval;
 	    struct brcmf_console console;	/* Console output polling support */
-	    uint console_addr;	/* Console address from shared struct */
 #endif
-	    uint clkstate;		/* State of sd and backplane clock(s) */
-	    s32 idletime;		/* Control for activity timeout */
-	    s32 idlecount;		/* Activity timeout counter */
-	    s32 idleclock;		/* How to set bus driver when idle */
-	    bool rxflow_mode;	/* Rx flow control mode */
-	    bool rxflow;		/* Is rx flow control on */
-	    bool alp_only;		/* Don't use HT clock (ALP only) */
 	    u8 *ctrl_frame_buf;
 	    u16 ctrl_frame_len;
 	    bool ctrl_frame_stat;
 	    int ctrl_frame_err;
-	    struct task_struct *watchdog_tsk;
 	    struct workqueue_struct *brcmf_wq;
 	    struct work_struct datawork;
 	    bool dpc_triggered;
 	    struct brcmf_sdio_count sdcnt;
     };
 
+    /* function prototypes */
     static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev);
     static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write);
     static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset);
@@ -387,6 +355,16 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         return 0;
     }
 
+    /*
+        the following functions are for the Broadcom PCI Wlan cards, note that are minimalistic enough for educative purposes
+        magma_broadcom_pci_write8
+        magma_broadcom_pci_write32
+        magma_broadcom_pci_read8
+        magma_broadcom_pci_read32
+        magma_broadcom_ram_write32
+
+    */
+
     /* magma_broadcom_pci_write8 */
     static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write){
         #ifndef BCMA_CORE_SIZE
@@ -413,6 +391,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         return 0;
         }
 
+    /* magma_broadcom_pci_read8 */
     static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset){
        #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
@@ -424,6 +403,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 	    return ioread8(magma_broadcom_pci_mmio + offset);
     }
 
+    /* magma_broadcom_pci_read32 */
     static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
@@ -466,7 +446,8 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     #ifndef _LINUX_TYPES_H
         #include <linux/types.h>
     #endif
-    /* https://elixir.bootlin.com/linux/latest/source/include/linux/types.h#L158 */
+
+    /* this is the main I/O function, the idea behind that is that this would be the backend for the IOCTLing system adopted by the Magma driver */
     static struct magma_io_res *magma_broadcom_main_io(resource_size_t bus_addr, enum magma_broadcom_available_io_ops ops_code, u16 offset, u32 value_to_write){
         struct magma_io_res *magma_io_struct = (struct magma_io_res *)kmalloc(sizeof(magma_io_struct), GFP_USER);        
         void __iomem *memory_area;
@@ -510,6 +491,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
 EXPORT_SYMBOL(magma_broadcom_main_io);
 
+    /* IOCTL processing part, calls 'magma_broadcom_main_io' for backend I/O operations */
     static long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
         switch(cmd){
 

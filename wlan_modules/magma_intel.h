@@ -4,6 +4,8 @@
 enum magma_iwlwifi_read_len{
     MAGMA_IWLWIFI_WRITE_BYTE = 8,
     MAGMA_IWLWIFI_WRITE_LONG = 32,
+    MAGMA_IWLWIFI_READ_LONG = 64,
+    MAGMA_IWLWIFI_READ_CONFIG_LONG = 128,
 };
 
 /* the pci_device_id struct contains all PCI devices Vendor / Product IDs, will be used during the probe function invocation in a for loop for determining if the host has attached a PCI device which is conform */
@@ -226,6 +228,16 @@ enum magma_iwlwifi_hcmd {
 	SCAN_OFFLOAD_PROFILES_QUERY_CMD = 0x56,
 };
 
+/* function prototypes */
+static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void __iomem *hw_base);
+static void magma_iwlwifi_pcie_write8(void __iomem *hw_base, u32 offset, u8 value_to_write);
+static void magma_iwlwifi_pcie_write32(void __iomem *hw_base, u32 offset, u8 value_to_write);
+static u32 magma_iwlwifi_pcie_read32(void __iomem *hw_base, u32 offset);
+static void magma_iwlwifi_pcie_set_bitmask(void __iomem *hw_base, u32 register_to_set, u32 mask, u32 value_to_write);
+static void magma_iwlwifi_pcie_software_reset(void __iomem *hw_base);
+static int magma_iwlwifi_pcie_read_config32(struct pci_dev *magma_pci_dev, u32 offset, u32 *value);
+static void magma_iwlwifi_pcie_write_bytes(void *hw_base, enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value_to_write);
+
 static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void __iomem *hw_base){
     /* control if the pci_dev struct is safe to use as argoument for other functions */
     void __iomem * const *page_tables = pcim_iomap_table(magma_iwlwifi_pci);
@@ -236,14 +248,63 @@ static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void _
     return 0;
 }
 
+/* note that iwlwifi has only the PCIe interface, so readl/writel "bare" functions will work without any problem */
+
+static void magma_iwlwifi_pcie_write8(void __iomem *hw_base, u32 offset, u8 value_to_write){
+    /* write 1 byte (8 bits) */
+    writeb(value_to_write, (hw_base + offset));
+}
+
+static void magma_iwlwifi_pcie_write32(void __iomem *hw_base, u32 offset, u8 value_to_write){
+    /* write 32 bits, 'long' */
+    writel(value_to_write, (hw_base + offset));
+}
+
+static u32 magma_iwlwifi_pcie_read32(void __iomem *hw_base, u32 offset){
+    /* read 32 bits */
+    return readl(hw_base + offset);
+}
+
+static void magma_iwlwifi_pcie_set_bitmask(void __iomem *hw_base, u32 register_to_set, u32 mask, u32 value_to_write){
+    u32 temp_val;
+    temp_val = magma_iwlwifi_pcie_read32(hw_base, register_to_set);
+    temp_val &= ~mask;
+    temp_val |= value_to_write;
+    magma_iwlwifi_pcie_write32(hw_base, register_to_set, temp_val);
+}
+
+/* functions for reseting the internal iwlwifi card software state, interesting under the debugging point of view */
+static void magma_iwlwifi_pcie_software_reset(void __iomem *hw_base){
+    #define MAGMA_IWLWIFI_RESET_CONTROL_STATUS_REGISTER 0x020
+    #define MAGMA_IWLWIFI_RESET_FLAG 0X00000080
+    magma_iwlwifi_pcie_set_bitmask(hw_base, MAGMA_IWLWIFI_RESET_CONTROL_STATUS_REGISTER, MAGMA_IWLWIFI_RESET_FLAG, MAGMA_IWLWIFI_RESET_FLAG);
+
+}
+
+/* read 32 bit configs from the iwlwifi card */
+static int magma_iwlwifi_pcie_read_config32(struct pci_dev *magma_pci_dev, u32 offset, u32 *value){
+    if( sizeof(magma_pci_dev) == 0 || magma_pci_dev == NULL ){
+        #define PCIE_DEV_NOT_FILLED 0x2
+        return -PCIE_DEV_NOT_FILLED;
+    }
+    return pci_read_config_dword(magma_pci_dev, offset, value);
+}
+
 /* magma_iwlwifi_pcie_write_bytes: write 8 bits or 32 bits at the specified offset in the WLAN card */
-static void magma_iwlwifi_pcie_write_bytes(void *hw_base, enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value){
+static void magma_iwlwifi_pcie_write_bytes(void *hw_base, enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value_to_write){
     switch(magma_iwlwifi_readlength){
         case MAGMA_IWLWIFI_WRITE_BYTE:
-            writeb(value, ( hw_base + offset ) ); /* writeb stands for write Byte */
+            magma_iwlwifi_pcie_write8(hw_base, offset, value_to_write );
             break;
         case MAGMA_IWLWIFI_WRITE_LONG:
-            writel(value, ( hw_base + offset ) ); /* writel stands for write Long */
+            magma_iwlwifi_pcie_write32(hw_base, offset, value_to_write );
+            break;
+        case MAGMA_IWLWIFI_READ_LONG:
+            magma_iwlwifi_pcie_read32(hw_base, offset);
+            break;
+        case MAGMA_IWLWIFI_READ_CONFIG_LONG:
+            /* still to think how to spawn a pci_dev struct */
+            // magma_iwlwifi_pcie_read_config32();
             break;
     }
 }
