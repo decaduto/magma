@@ -75,6 +75,7 @@
 /* Linux firmware API, used for loading the firmware of the associated device in memory */
 #include <linux/firmware.h>
 
+#include "wlan_modules/magma_intel.h"
 #include "wlan_modules/magma_broadcom.h"
 
 #define MODULE_DESC "MagMa-V is an universal wlan driver designed for Linux/Android OSes, supports both HardMac and SoftMac 802.11 cards, full support for Intel and Broadcomm products"
