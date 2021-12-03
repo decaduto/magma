@@ -226,9 +226,9 @@ enum magma_iwlwifi_hcmd {
 	SCAN_OFFLOAD_PROFILES_QUERY_CMD = 0x56,
 };
 
-static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void *hw_base){
+static int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void __iomem *hw_base){
     /* control if the pci_dev struct is safe to use as argoument for other functions */
-    void __iomem *page_tables = pcim_iomap_table(magma_iwlwifi_pci);
+    void __iomem * const *page_tables = pcim_iomap_table(magma_iwlwifi_pci);
     if( page_tables == NULL ){
         return -1; //TODO
     }

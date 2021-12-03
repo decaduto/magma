@@ -20,7 +20,6 @@
         MAGMA_BROADCOM_SCAN,
         MAGMA_BROADCOM_START_AP,
         MAGMA_BROADCOM_TX,
-        MAGMA_BROADCOM_GET_FW_NAME = 10,
     };
 
     /* this enum represent all commands supported by the brcmfmac driver */
@@ -360,7 +359,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
     /* firmware load part, from: https://elixir.bootlin.com/linux/latest/source/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c#L615 */
     static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev){
-        if( request_firmware(fw, MAGMA_BROADCOM_FW_NAME, magma_bcm_dev) == 0 ){
+        if( request_firmware(fw, MAGMA_BROADCOM_GET_FW_NAME, magma_bcm_dev) == 0 ){
             return LOAD_SUCCESS;
         }else{
             return LOAD_ERROR;
