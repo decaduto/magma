@@ -350,11 +350,6 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         }
     }
 
-    static int magma_broadcom_unload_fw(){
-
-        return 0;
-    }
-
     /*
         the following functions are for the Broadcom PCI Wlan cards, note that are minimalistic enough for educative purposes
         magma_broadcom_pci_write8
@@ -433,10 +428,6 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
             #define B43_MMIO_RAM_CONTROL		0x130
         #endif
 	    magma_broadcom_pci_write32(magma_broadcom_pci_mmio, B43_MMIO_RAM_CONTROL, offset);
-        #ifndef __ASM_GENERIC_MMIOWB_H
-            #include <asm-generic/mmiowb.h>
-        #endif    	    
-        mmiowb();
         #ifndef B43_MMIO_RAM_DATA
             #define B43_MMIO_RAM_DATA		0x134
         #endif
