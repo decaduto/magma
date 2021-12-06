@@ -136,7 +136,6 @@
     	union {
     		struct brcmf_sdio_dev *sdio;
     		struct brcmf_usbdev *usb;
-    		struct brcmf_pciedev *pcie;
     	} bus_priv;
     	enum magma_broadcom_bus_protocol_type proto_type;
     	struct device *dev;
@@ -156,17 +155,6 @@
 	    char nvram_name[BRCMF_FW_NAME_LEN];
 	    enum magma_broadcom_sdiod_state state;
     };
-
-    struct magma_broadcomm_sdio_bus{
-	    union {
-	    	struct brcmf_sdio_dev *sdio;
-	    	struct brcmf_usbdev *usb;
-	    	struct brcmf_pciedev *pcie;
-	    } bus_priv;
-	    enum magma_broadcom_bus_protocol_type proto_type;
-	    struct device *dev;
-	    enum magma_broadcom_bus_state state;
-    }magma_broadcomm_sdio_bus;
 
     /* counters for the commands in the SDIO bus, used for the bcm43XX chips */
     struct brcmf_sdio_count {
@@ -196,7 +184,7 @@
     };
 
     /* function prototypes */
-    static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev);
+    static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev); /* still to do */
     static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write);
     static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset);
     static int magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write);
@@ -242,8 +230,8 @@
 			pm = true;
 	    }else
             wake_up(&host->wq);
-	    spin_unlock_irqrestore(&host->lock, flags);
-	    remove_wait_queue(&host->wq, &wait);
+	        spin_unlock_irqrestore(&host->lock, flags);
+	        remove_wait_queue(&host->wq, &wait);
     if(pm){
         #ifdef CONFIG_PM
         #ifndef RPM_GET_PUT
@@ -373,6 +361,17 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
     }
 
+    /* magma_broadcom_pci_write16 */
+    static void magma_broadcom_pci_write16(void __iomem *magma_broadcom_pci_mmio, u16 offset, u16 value_to_write){
+        #ifndef BCMA_CORE_SIZE
+              #define BCMA_CORE_SIZE 0x1000
+        #endif
+        offset += (2 * BCMA_CORE_SIZE);
+        #ifndef __GENERIC_IO_H
+            #include <asm-generic/iomap.h>
+        #endif
+	    return iowrite16(value_to_write, (offset + magma_broadcom_pci_mmio));
+    }
     /* magma_broadcom_pci_write32*/ 
     static int magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write){
         #ifndef BCMA_CORE_SIZE
@@ -466,6 +465,9 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
             case MAGMA_BROADCOM_DO_WRITE8:
                 magma_broadcom_pci_write8(memory_area, offset, value_to_write);
                 magma_io_struct->write_res = 1;
+                return magma_io_struct;
+            case MAGMA_BROADCOM_DO_WRITE16:
+                magma_broadcom_pci_write16(memory_area, offset, value_to_write);
                 return magma_io_struct;
             case MAGMA_BROADCOM_DO_WRITE32:
                 magma_broadcom_pci_write32(memory_area, offset, value_to_write);
