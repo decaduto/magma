@@ -14,7 +14,7 @@
             - https://lupyuen.github.io/articles/wifi
             - https://github.com/erikarn/iwm/tree/master/driver (FreeBSD implementation of the iwlwifi Linux's driver)
             - https://www.kernel.org/doc/html/v5.0/driver-api/80211/index.html (Linux Kernel official page about the cfg80211 && mac80211 WiFi subsystems)
-
+            - https://bcm-v4.sipsolutions.net/ (Reverse Engineering project developed by the Linux's Team aimed to reverse the proprietary Broadcom's wl driver, essentially describes the internals of the broadcomm chip, this is the base for the b43 driver)
             - https://www.cattius.com/ExceptionsKernelDriver/ (Used for catching exceptions in a Kernel Module)
             - https://www.kernel.org/doc/html/latest/filesystems/debugfs.html (Used for debugging the module in the fs)
 */
@@ -75,8 +75,9 @@
 /* Linux firmware API, used for loading the firmware of the associated device in memory */
 #include <linux/firmware.h>
 
-#include "wlan_modules/magma_intel.h"
-#include "wlan_modules/broadcom/magma_broadcom.h"
+#include "wlan_modules/intel/magma_intel.h"
+#include "wlan_modules/broadcom/DummyTransmission.h"
+//#include "wlan_modules/broadcom/magma_broadcom.h"
 
 #define MODULE_DESC "MagMa-V is an universal wlan driver designed for Linux/Android OSes, supports both HardMac and SoftMac 802.11 cards, full support for Intel and Broadcomm products"
 #define MODULE_FW_V "MagMa-V 1.12"
@@ -124,7 +125,7 @@ struct ieee80211_ops magma_V_softmac = {                        \
         .stop_ap = magma_softmac_stop_ap_mode,                  \
         .hw_scan = magma_softmac_scan,                          \
     };                                                          \
-    magma_main_drv->magma_ieee80211_ops = &magma_V_softmac;                     \
+    magma_main_drv->magma_ieee80211_ops = &magma_V_softmac;     \
 }
 
 /* the MAGMA_V_INITIALIZE_HARDMAC is used when the device supports effectively hardMAC, this permits to initialize the cfg80211_ops struct */
@@ -141,7 +142,7 @@ struct cfg80211_ops magma_V_hardmac = {                 \
         .stop_ap = magma_stop_ap_mode,                  \
         .scan = magma_scan,                             \
     };                                                  \
-    magma_main_drv->magma_cfg80211_ops = &magma_V_hardmac;              \
+    magma_main_drv->magma_cfg80211_ops = &magma_V_hardmac;  \
 }
 
 /*
@@ -349,12 +350,13 @@ static struct magma_main_driver_container *magma_main_drv = NULL;
 
 /* function prototypes */
 static void magma_initialize_driver_container(struct magma_main_driver_container *magma_drv);
-static struct magma_wlan_device_detail *magma_pci_probe(struct pci_dev *pci_dev, struct pci_device_id *pci_table_entity);
-static int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
+struct magma_wlan_device_detail *magma_pci_probe(struct pci_dev *pci_dev, struct pci_device_id *pci_table_entity);
+int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
 static int softmac_detection(struct magma_wlan_device_detail *magma_dev);
 
 /* set to NULL every struct pointer elements inside the 'magma_main_driver_container' struct */
 static void magma_initialize_driver_container(struct magma_main_driver_container *magma_drv){
+    int i = 0; /* temp. counter */
     /* if the struct is NULLm reallocate it */
     if( sizeof(magma_drv) == 0 ){
         magma_drv = (struct magma_main_driver_container *)kmalloc(sizeof(struct magma_main_driver_container), GFP_KERNEL);
@@ -367,6 +369,12 @@ static void magma_initialize_driver_container(struct magma_main_driver_container
     magma_drv->magma_cfg80211_ops = NULL;
     magma_drv->magma_wlan_dev_det = NULL;    
     memset(magma_main_drv->magma_V_fops, 0x0, ( sizeof(struct file_operations) * 3 ) );
+    /* set up the V_fops array */
+    for(; i <= 2; i++){
+        magma_drv->magma_V_fops[i]->owner = THIS_MODULE;
+        //magma_drv->magma_V_fops[i]->unlocked_ioctl = ;
+    }
+    
 }
 
 /* still to be completed */
@@ -376,7 +384,7 @@ static int magma_initialize_wlan_pci(struct pci_dev *pci_wlan, enum MagMa_V_retu
     if( barr < 0 ){
         return -NO_BAR_AVAILABLE;
     }
-    if( pci_enable_device_mem(pci_wlan) ){
+    if( pci_enable_device_mem(pci_wlan) < 0 ){
         kfree(pci_wlan);
         return -NO_ENABLE_MEMDEV;
     }
@@ -384,7 +392,7 @@ static int magma_initialize_wlan_pci(struct pci_dev *pci_wlan, enum MagMa_V_retu
         pci_disable_device(pci_wlan);
         return -NO_ENABLE_REGION_REQ;
     }
-    if( pci_enable_device(pci_wlan) ){
+    if( pci_enable_device(pci_wlan) < 0 ){
         return -NO_ENABLE_PCI_DEV;
     }
     pci_set_master(pci_wlan);
@@ -414,7 +422,7 @@ static int magma_initialize_wlan_pci(struct pci_dev *pci_wlan, enum MagMa_V_retu
         #include "wlan_modules/magma_intel.h"
 
 /* PCI function for probying the device */
-static struct magma_wlan_device_detail *magma_pci_probe(struct pci_dev *pci_dev, struct pci_device_id *pci_table_entity){
+struct magma_wlan_device_detail *magma_pci_probe(struct pci_dev *pci_dev, struct pci_device_id *pci_table_entity){
     int i = 0;
     /* allocate a blank return magma_wlan_device_detail struct */    
     struct magma_wlan_device_detail *magma_dev_detail = kmalloc(sizeof(magma_dev_detail), GFP_KERNEL);
@@ -474,14 +482,6 @@ static void magma_pci_remove(struct pci_dev *pci_device){
     pci_free_irq_vectors(pci_device);    
     pci_release_regions(pci_device);
 }
-
-/* main function used for sending Host CoMmanDs for Intel based devices using PCI bus */
-static int magma_iwlwifi_send_pci_hcmd(enum magma_iwlwifi_hcmd msg){
-    /* here we must be able to identify which type of device is and if is MVM or DVM */
-
-    return 0;
-}
-EXPORT_SYMBOL(magma_iwlwifi_send_pci_hcmd);
 
 #endif
 
@@ -596,41 +596,24 @@ static void magma_softmac_create_led_trigger(struct ieee80211_hw *hw, enum ieee8
 static void magma_softmac_setup_emergency_shell(struct ieee80211_hw *hw){
     #ifdef CONFIG_MAC80211_LEDS
         char *emergency_buffer;
-        magma_softmac_create_led_trigger(hw, , 100, 1, emergency_buffer);
+        /* IEEE80211_TPT_LEDTRIG_FL_CONNECTED means that the LED blinking will be enabled anytime the 802.11 interface is connected in any way, AP mode is included */
+        magma_softmac_create_led_trigger(hw, IEEE80211_TPT_LEDTRIG_FL_CONNECTED, 100, 1, emergency_buffer);
         magma_softmac_display_hardware_info(hw, emergency_buffer);
     #endif
 }
 
-
-/* call this function if and only if a Broadcom wlan device has been found in the SDIO bus, note that set up the 2 sdio_r/w functions, but set to 'NULL' the ones related to the iwlwifi */
-#define MAGMA_SPAWN_BROADCOM_SDIO_RW() {    \
-u32 magma_broadcomm_sdio_read32(struct ssb_device *sdio_dev, u16 offset){  \
-	return ssb_read32(sdio_dev, offset);                        \
-}                                                               \
-void magma_broadcomm_sdio_write32(struct ssb_device *sdio_dev, u16 offset, u32 value){ \
-	ssb_write32(sdio_dev, offset, value);                                   \
-}                                                                           \
-magma_wlan_dev_det->iwl_pci_read32 = NULL;                                               \
-magma_wlan_dev_det->iwl_pci_write32 = NULL;                                              \
-magma_wlan_dev_det->sdio_write32 = magma_broadcomm_sdio_write32;                         \
-magma_wlan_dev_det->sdio_read32 = magma_broadcomm_sdio_read32;                           \
-}
-
-#define MAGMA_SPAWN_QUALCOMM_PCI_RW() { \
-}
-
 /* entry point function */
 static int __init detect_available_wl0_intf(void){
-
     #ifndef MAC_ADDRESS_LEN
         #define MAC_ADDRESS_LEN 6
     #endif
     int i = 0;
     dev_t magma_device_t;
+    printk(KERN_ALERT "1");
     /* the MAC address we are going to give to our 802.11 adapter, note that is ED:0B:AD:ED:0B:AD */
     u8 permanent_address[MAC_ADDRESS_LEN] = {0xED, 0x0B, 0xAD, 0xED, 0x0B, 0xAD};
     /* bitmask of frames that can be received by the driver OTA */
-    u16 antenna_rx[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x6, 0x7, 0x8, 0x9, 0x10, 0xFF, 0xcc, 0xBAD};
+    u16 antenna_rx[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x6, 0x7, 0x8, 0x9, 0x10, 0xFF, 0xcc, 0xED, 0xBAD};
     /* bitmask of frames that can be sent by the driver OTA */
     u16 antenna_tx[] = {0x00, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x99};
 
@@ -640,22 +623,21 @@ static int __init detect_available_wl0_intf(void){
 
     /* allocate the private buffer memory pool, this will be used as internal data array for storing vendor based data, has only 2^6 bytes */
     void *privateBufferSizePool = kmalloc(GFP_KERNEL, MAX_BUFFERSIZE_PVT);
+    printk(KERN_ALERT "2");
     struct ieee80211_txrx_stypes *magma_V_management_bits = (struct ieee80211_txrx_stypes*)kmalloc( ( sizeof(antenna_rx) + sizeof(antenna_tx) ), GFP_KERNEL);
 
 
     /* start cleaning the struct */
     magma_initialize_driver_container(magma_main_drv);
-
+    printk(KERN_ALERT "3");
     /* initialize the buffer space, this will be used as the module built in buffer for the internal console */
     memset(magm_main_V.private_buffer, 0x0, MAGM_MAX_BUFFER_SIZE);
-    for(; i <= 2; i++){
-        magma_main_drv->magma_V_fops[i]->owner = THIS_MODULE;
-        magma_main_drv->magma_V_fops[i]->unlocked_ioctl = ;
-    }
-
+    printk(KERN_ALERT "4");
     for(i = 0; i <= 1; i++){
         magma_pci_probe(NULL, NULL);
     }
+        printk(KERN_ALERT "5");
+    // do SDIO and USB scan
 
     /* fetch the flag set in the Magm_universal_flags struct from the above function, exit if 'unsupported_driver' flag is set */
     if( Magm_universal_flags.unsupported_driver == 1 ){
@@ -665,6 +647,7 @@ static int __init detect_available_wl0_intf(void){
     if( alloc_chrdev_region(&magma_device_t, 0, 2, "MagMa-WiFi") ){
         return ERROR_CHRDEV_ALLOC;
     }
+        printk(KERN_ALERT "6");
     magma_main_drv->magma_class = class_create(THIS_MODULE, "MagMa-WiFi");
     // TODO: init the device
 
@@ -675,6 +658,8 @@ static int __init detect_available_wl0_intf(void){
 
     /* if softmac_detection() function returns that the current device is a SOFTmac one, use mac80211 structures and functions, use basic wiphy otherwise */
     if( softmac_detection(magma_main_drv->magma_wlan_dev_det) ){
+        /* include the generic ieee80211_ops function header, the function contained are named as the ones in MAGMA_V_INITIALIZE_SOFTMAC() */
+        #include "generic_softmac/generic.h"
         /* allocate safely the ieee80211_hw struct, defined before only as a simple pointer */
         MAGMA_V_INITIALIZE_SOFTMAC();
         magma_main_drv->magma_V_hardware = ieee80211_alloc_hw(sizeof(struct ieee80211_ops), magma_main_drv->magma_ieee80211_ops);
@@ -741,6 +726,7 @@ static int __init detect_available_wl0_intf(void){
     SET_IEEE80211_DEV(magma_main_drv->magma_V_hardware, magma_main_drv->magma_device);
     /* if the card is not SOFTMAC based, must be HARDMAC based, so we will use only the cfg80211 layer, now we must play with wiphy struct, instead of the ieee80211_hw */
     }else{
+        #include "generic_hardmac/generic.h"
         /* allocate the cfg80211_ops safely */
         MAGMA_V_INITIALIZE_HARDMAC();
         
