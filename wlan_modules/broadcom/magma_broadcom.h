@@ -26,7 +26,7 @@
     }magma_broadcom_available_io_ops;
     
     /* results of the I/O operations, I've decided to create a specific struct which contains all the different return types for the Output Operations */
-    struct magma_io_res{
+    struct magma_broadcom_io_res{
         u8 read8_res;
         u16 read16_res;
         u32 read32_res;
@@ -187,19 +187,37 @@
 	    struct brcmf_sdio_count sdcnt;
     };
 
+
+/* call this function if and only if a Broadcom wlan device has been found in the SDIO bus, note that set up the 2 sdio_r/w functions, but set to 'NULL' the ones related to the iwlwifi */
+#define MAGMA_SPAWN_BROADCOM_SDIO_RW() {    \
+    u32 magma_broadcomm_sdio_read32(struct ssb_device *sdio_dev, u16 offset){  \
+	    return ssb_read32(sdio_dev, offset);                        \
+    }                                                               \
+    void magma_broadcomm_sdio_write32(struct ssb_device *sdio_dev, u16 offset, u32 value){ \
+	    ssb_write32(sdio_dev, offset, value);                                   \
+    }                                                                           \
+        magma_wlan_dev_det->iwl_pci_read32 = NULL;                                               \
+        magma_wlan_dev_det->iwl_pci_write32 = NULL;                                              \
+        magma_wlan_dev_det->sdio_write32 = magma_broadcomm_sdio_write32;                         \
+        magma_wlan_dev_det->sdio_read32 = magma_broadcomm_sdio_read32;                           \
+    }
+
     /* function prototypes */
-    static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev); /* still to do */
-    static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write);
-    static void magma_broadcom_pci_write16(void __iomem *magma_broadcom_pci_mmio, u16 offset, u16 value_to_write);
-    static void magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write);
-    static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset);
-    static u16 magma_broadcom_pci_read16(void __iomem *magma_broadcom_pci_mmio, u16 offset);
-    static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset);
-    static int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
-    static int magma_broadcom_send_sdio_hcmd(enum magma_broadcom_hcmd msg);
+    int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev); /* still to do */
+    void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write);
+    void magma_broadcom_pci_write16(void __iomem *magma_broadcom_pci_mmio, u16 offset, u16 value_to_write);
+    void magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write);
+    void magma_broadcom_ram_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 val);
+    u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset);
+    u16 magma_broadcom_pci_read16(void __iomem *magma_broadcom_pci_mmio, u16 offset);
+    u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset);
+    int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort);
+    int magma_broadcom_send_sdio_hcmd(enum magma_broadcom_hcmd msg);
+    long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+    struct magma_broadcom_io_res *magma_broadcom_main_io(resource_size_t bus_addr, enum magma_broadcom_available_io_ops ops_code, u16 offset, u32 value_to_write);
 
     /* this is a modified version of the Linux's kernel mmc_claim_host function, used for claiming the SDIO host for initializing a set of operations on it */
-    static int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort){
+    int magma_sdio_host_claimer(struct mmc_host *host, struct mmc_ctx *ctx, atomic_t *abort){
 	    struct task_struct *task = ctx ? NULL : current;
 	    DECLARE_WAITQUEUE(wait, current);
 	    unsigned long flags;
@@ -250,7 +268,7 @@
     }
 
     /* main function used for sending Host CoMmanDs for broadcomm devices using SDIO bus */
-    static int magma_broadcom_send_sdio_hcmd(enum magma_broadcom_hcmd msg){
+    int magma_broadcom_send_sdio_hcmd(enum magma_broadcom_hcmd msg){
         wait_queue_head_t wireless_wait_queue;
         spinlock_t wifi_spinlock;
 	    int ret;
@@ -332,11 +350,11 @@
 	    return ret;
 }
 
-EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
+    EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
 
     /* firmware load part, from: https://elixir.bootlin.com/linux/latest/source/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c#L615 */
-    static int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev){
+    int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev){
         if( request_firmware(fw, MAGMA_BROADCOM_GET_FW_NAME, magma_bcm_dev) == 0 ){
             return LOAD_SUCCESS;
         }else{
@@ -357,7 +375,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     */
 
     /* magma_broadcom_pci_write8 */
-    static void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write){
+    void magma_broadcom_pci_write8(void __iomem *magma_broadcom_pci_mmio, u16 offset, u8 value_to_write){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -370,7 +388,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     }
 
     /* magma_broadcom_pci_write16 */
-    static void magma_broadcom_pci_write16(void __iomem *magma_broadcom_pci_mmio, u16 offset, u16 value_to_write){
+    void magma_broadcom_pci_write16(void __iomem *magma_broadcom_pci_mmio, u16 offset, u16 value_to_write){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -380,8 +398,9 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         #endif
 	    return iowrite16(value_to_write, (offset + magma_broadcom_pci_mmio));
     }
+    
     /* magma_broadcom_pci_write32*/ 
-    static void magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write){
+    void magma_broadcom_pci_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 value_to_write){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -393,7 +412,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
         }
 
     /* magma_broadcom_pci_read8 */
-    static u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset){
+    u8 magma_broadcom_pci_read8(void __iomem *magma_broadcom_pci_mmio, u16 offset){
        #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -405,7 +424,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     }
 
     /* magma_broadcom_pci_read16 */
-    static u16 magma_broadcom_pci_read16(void __iomem *magma_broadcom_pci_mmio, u16 offset){
+    u16 magma_broadcom_pci_read16(void __iomem *magma_broadcom_pci_mmio, u16 offset){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -417,7 +436,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     }
 
     /* magma_broadcom_pci_read32 */
-    static u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset){
+    u32 magma_broadcom_pci_read32(void __iomem *magma_broadcom_pci_mmio, u16 offset){
         #ifndef BCMA_CORE_SIZE
               #define BCMA_CORE_SIZE 0x1000
         #endif
@@ -430,7 +449,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 
     /* write 32 bits directly into the wlan chip RAM, this function
         has been taken from here https://elixir.bootlin.com/linux/v4.14/source/drivers/net/wireless/broadcom/b43/main.c#L477 */
-    static void magma_broadcom_ram_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 val){
+    void magma_broadcom_ram_write32(void __iomem *magma_broadcom_pci_mmio, u16 offset, u32 val){
         u32 mac_ctrl;
         #ifndef B43_MMIO_MACCTL
             #define B43_MMIO_MACCTL			0x120
@@ -457,8 +476,8 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
     #endif
 
     /* this is the main I/O function, the idea behind that is that this would be the backend for the IOCTLing system adopted by the Magma driver */
-    static struct magma_io_res *magma_broadcom_main_io(resource_size_t bus_addr, enum magma_broadcom_available_io_ops ops_code, u16 offset, u32 value_to_write){
-        struct magma_io_res *magma_io_struct = (struct magma_io_res *)kmalloc(sizeof(magma_io_struct), GFP_USER);        
+    struct magma_broadcom_io_res *magma_broadcom_main_io(resource_size_t bus_addr, enum magma_broadcom_available_io_ops ops_code, u16 offset, u32 value_to_write){
+        struct magma_broadcom_io_res *magma_io_struct = (struct magma_broadcom_io_res *)kmalloc(sizeof(magma_io_struct), GFP_USER);        
         void __iomem *memory_area;
         magma_io_struct->read8_res = 0;
         magma_io_struct->read16_res = 0;
@@ -512,7 +531,7 @@ EXPORT_SYMBOL(magma_broadcom_send_sdio_hcmd);
 EXPORT_SYMBOL(magma_broadcom_main_io);
 
     /* IOCTL processing part, calls 'magma_broadcom_main_io' for backend I/O operations */
-    static long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
+    long magma_broadcom_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
         switch(cmd){
 
 

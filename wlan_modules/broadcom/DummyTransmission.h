@@ -72,38 +72,36 @@ struct magma_fake_transmission_ops{
     struct magma_fake_transmission_details *details;
 };
 
-/* spawn a struct 'magma_fake_transmission_ops' without anything set */
-#define magma_istantiate_dummy_test_struct() {  \
-    struct magma_fake_transmission_ops magma_dummy_trans = {    \
-        .is_ofdm = 0,                                           \
-        .is_pa_on = 0,                                          \
-        .details = NULL,                                        \
-    }                                                           \
-}
-
 #define magma_execute_dummy_test(idea){ \
     if( idea == 0 ){    \
         struct magma_fake_transmission_ops magma_fk = { \
             is_ofdm = 1,    \
             is_pa_on = 0,   \
         };  \
-        magma_istantiate_fake_transmission(/* todo */, &magma_fk);  \
+        magma_istantiate_fake_transmission(&magma_fk);  \
     }else if( idea == 1 ){  \
         struct magma_fake_transmission_ops magma_fk = { \
             is_ofdm = 0,    \
             is_pa_on = 1,   \
         };  \
-        magma_istantiate_fake_transmission(/* todo */, &magma_fk);  \
+        magma_istantiate_fake_transmission(&magma_fk);  \
     }else{   \
         struct magma_fake_transmission_ops magma_fk = { \
             is_ofdm = 1,    \
             is_pa_on = 1,   \
         };  \
-        magma_istantiate_fake_transmission(/* todo */, &magma_fk);  \
+        magma_fk = {    \
+            .details = {    \
+                .radio_ver = 0x2050,  \
+                .phy_type = 0x08,   \
+                .core_review = 12, \
+            },  \
+        };  \
+        magma_istantiate_fake_transmission(&magma_fk);  \
     }   \
 }
 
-static void magma_istantiate_fake_transmission(struct magma_fake_transmission_ops *fake_trans_ops){ /* sobstitute a struct which contains both ofdm and pa_on bool but use bit field instead */
+void magma_istantiate_fake_transmission(struct magma_fake_transmission_ops *fake_trans_ops){ /* sobstitute a struct which contains both ofdm and pa_on bool but use bit field instead */
     #define BCMA_ADDR_BASE 0x18000000	
     unsigned int i, max_loop;
 	u16 value;
@@ -205,6 +203,5 @@ static void magma_istantiate_fake_transmission(struct magma_fake_transmission_op
 		udelay(10);
 	}
 }
-
 EXPORT_SYMBOL(magma_istantiate_fake_transmission);
 

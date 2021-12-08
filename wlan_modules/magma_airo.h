@@ -1,3 +1,5 @@
+/*  © 2021 Edoardo Mantovani All Rights Reserved */
+
 /* Note that this driver has been declared obsolete since Linux Kernel version 2.6.X, but for educative purposes, I've decided to implement it, this because is the simplest alternative driver we can implement for now :)
     - source code: https://elixir.bootlin.com/linux/2.4.30/source/drivers/net/wireless/airo.c
 */
