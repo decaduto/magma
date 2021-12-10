@@ -12,7 +12,7 @@ sub BEGIN{
         my $build_par = '$(shell uname -r)/build M=$(shell pwd)';
         my $Makefile_text = 
 "obj-m +=$stripped_modname
-CFLAGS_$stripped_modname := -O3 -faggressive-loop-optimizations -Wframe-larger-than=2048";
+CFLAGS_$stripped_modname := -O3 -faggressive-loop-optimizations -Wframe-larger-than=4096 -Wno-return-type";
         
         open(MAKEFILE, '>', "Makefile") || die("problem with the Makefile creation\n");
         print MAKEFILE $Makefile_text;
