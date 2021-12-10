@@ -354,13 +354,13 @@
 
 
     /* firmware load part, from: https://elixir.bootlin.com/linux/latest/source/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c#L615 */
-    int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev){
-        if( request_firmware(fw, MAGMA_BROADCOM_GET_FW_NAME, magma_bcm_dev) == 0 ){
-            return LOAD_SUCCESS;
-        }else{
-            return LOAD_ERROR;
-        }
-    }
+    //int magma_broadcom_request_fw(const struct firmware **fw, struct device *magma_bcm_dev){
+      //  if( request_firmware(fw, MAGMA_BROADCOM_GET_FW_NAME, magma_bcm_dev) == 0 ){
+        //    return LOAD_SUCCESS;
+        //}else{
+      //      return LOAD_ERROR;
+        //}
+    //}
 
     /*
         the following functions are for the Broadcom PCI Wlan cards, note that are minimalistic enough for educative purposes

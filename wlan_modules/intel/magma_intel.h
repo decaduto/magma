@@ -243,7 +243,7 @@ u32 magma_iwlwifi_pcie_read32(void __iomem *hw_base, u32 offset);
 void magma_iwlwifi_pcie_set_bitmask(void __iomem *hw_base, u32 register_to_set, u32 mask, u32 value_to_write);
 void magma_iwlwifi_pcie_software_reset(void __iomem *hw_base);
 int magma_iwlwifi_pcie_read_config32(struct pci_dev *magma_pci_dev, u32 offset, u32 *value);
-void magma_iwlwifi_main_io(enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value_to_write);
+struct magma_iwlwifi_io_res *magma_iwlwifi_main_io(enum magma_iwlwifi_read_len magma_iwlwifi_readlength, u32 offset, u32 value_to_write);
 
 int magma_iwlwifi_spawn_hw_base(struct pci_dev *magma_iwlwifi_pci, void __iomem *hw_base){
     /* control if the pci_dev struct is safe to use as argoument for other functions */
@@ -304,27 +304,30 @@ struct magma_iwlwifi_io_res *magma_iwlwifi_main_io(enum magma_iwlwifi_read_len m
     /* todo: function which copy the crafted struct from Magma to this local struct 'pci_dev' */
     void __iomem *hw_base;
     magma_io_struct->read32_res = 0;
-    if( magma_iwlwifi_spawn_hw_base(magma_iwlwifi_pci_d, hw_base) < 0 ){
-        return;
-    }
+    //if( magma_iwlwifi_spawn_hw_base(magma_iwlwifi_pci_d, hw_base) < 0 ){
+
+    //}
     switch(magma_iwlwifi_readlength){
         case MAGMA_IWLWIFI_DO_WRITE8:
-            magma_iwlwifi_pcie_write8(hw_base, offset, value_to_write );
+            magma_iwlwifi_pcie_write8(hw_base, offset, value_to_write);
             magma_io_struct->write_res = 1;
             return magma_io_struct;
         case MAGMA_IWLWIFI_DO_WRITE32:
-            magma_iwlwifi_pcie_write32(hw_base, offset, value_to_write );
+            magma_iwlwifi_pcie_write32(hw_base, offset, value_to_write);
             magma_io_struct->write_res = 1;
             return magma_io_struct;
         case MAGMA_IWLWIFI_DO_READ32:
             magma_io_struct->read32_res = magma_iwlwifi_pcie_read32(hw_base, offset);
             return magma_io_struct;
         case MAGMA_IWLWIFI_READ_CONFIG_LONG:
-            magma_io_struct->read_config_res = magma_iwlwifi_pcie_read_config32(magma_iwlwifi_pci_d, offset, value_to_write);
+            magma_io_struct->read_config_res = magma_iwlwifi_pcie_read_config32(magma_iwlwifi_pci_d, offset, &value_to_write);
             return magma_io_struct;
+        default:
+            break;
     }
 }
-EXPORT_SYMBOL(magma_iwlwifi_main_io);
+
+//EXPORT_SYMBOL(magma_iwlwifi_main_io);
 
 /* main function used for sending Host CoMmanDs for Intel based devices using PCI bus */
 int magma_iwlwifi_send_pci_hcmd(enum magma_iwlwifi_hcmd msg){

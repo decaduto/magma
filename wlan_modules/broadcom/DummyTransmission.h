@@ -179,14 +179,14 @@ void magma_istantiate_fake_transmission(struct magma_fake_transmission_ops *fake
 		magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_WRITE16, 0x0051, 0x0017);
     }
 	for (i = 0x00; i < max_loop; i++) {
-		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_TXE0_STATUS, 0);
+		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_TXE0_STATUS, 0)->read16_res;
 		if (value & 0x0080){
 			break;
         }
 		udelay(10);
 	}
 	for (i = 0x00; i < 0x0A; i++) {
-		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_TXE0_STATUS, 0);
+		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_TXE0_STATUS, 0)->read16_res;
 		if(value & 0x0400){
 			break;
         }
@@ -196,7 +196,7 @@ void magma_istantiate_fake_transmission(struct magma_fake_transmission_ops *fake
         #ifndef B43_MMIO_IFSSTAT
             #define B43_MMIO_IFSSTAT		0x690
         #endif
-		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_IFSSTAT, 0);
+		value = magma_broadcom_main_io(BCMA_ADDR_BASE, MAGMA_BROADCOM_DO_READ16, B43_MMIO_IFSSTAT, 0)->read16_res;
 		if(! (value & 0x0100) ){
 			break;
         }
