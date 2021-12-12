@@ -98,12 +98,26 @@
         usb_control_msg(magma_realtek_usb, pipe, 0x05, 0x40, (u16)(offset & 0x0000ffff), 0, &data, 4, 500);
     }
 
-    struct magma_realtek_io_res *magma_realtek_main_io(enum magma_realtek_available_io_ops, u16 offset, u32 value_to_write){
+    struct magma_realtek_io_res *magma_realtek_main_io(enum magma_realtek_available_io_ops, u32 offset, u32 value_to_write){
         struct magma_realtek_io_res *realtek_io_struct = (struct magma_realtek_io_res *)kmalloc(sizeof(realtek_io_struct), GFP_KERNEL);
         realtek_io_struct->read8_res = 0;
         realtek_io_struct->read16_res = 0;
         realtek_io_struct->read32_res = 0;
 
+        switch(magma_realtek_available_io_ops){
+            case MAGMA_REALTEK_DO_READ8:
+            realtek_io_struct->read8_res = magma_realtek_usb_read8(offset);
+            return realtek_io_struct;
+            case MAGMA_REALTEK_DO_READ16:
+            realtek_io_struct->read16_res = magma_realtek_usb_read16(offset);
+            return realtek_io_struct;
+            case MAGMA_REALTEK_DO_READ32:
+            realtek_io_struct->read32_res = magma_realtek_usb_read32(offset);
+            return realtek_io_struct;
+
+            default:
+            return realtek_io_struct;
+        }
     }
 
 #endif
