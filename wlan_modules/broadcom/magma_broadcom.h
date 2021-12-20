@@ -3,6 +3,16 @@
 #ifndef __MAGMA_BROADCOM_H
     #define __MAGMA_BROADCOM_H
 
+/* Headers for interacting with the SDIO Bus, may be an over-inclusion... */
+    #include <linux/mmc/core.h>
+    #include <linux/mmc/sdio.h>
+    #include <linux/mmc/sdio_func.h>
+    #include <linux/mmc/host.h>
+    #include <linux/mmc/card.h>
+    #include <linux/mmc/mmc.h>
+    #include <linux/mmc/sd.h>
+    #include <linux/mmc/slot-gpio.h>
+
     #ifndef __BCM47XX_NVRAM_H
         #include <linux/bcm47xx_nvram.h>
     #endif
